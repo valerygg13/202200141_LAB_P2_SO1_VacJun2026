@@ -1,0 +1,17 @@
+# Rust
+**/target/
+
+# Python
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# Variables locales
+.env
+
+# VS Code
+.vscode/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
