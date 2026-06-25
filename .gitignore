@@ -15,3 +15,7 @@
 # Sistema operativo
 .DS_Store
 Thumbs.db
+
+# Ejecutables compilados en Windows
+*.exe
+*.pdb
