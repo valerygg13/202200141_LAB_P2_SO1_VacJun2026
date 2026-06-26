@@ -1,0 +1,129 @@
+name: proyecto2-202200141
+
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: p2-rabbitmq-202200141
+    environment:
+      RABBITMQ_DEFAULT_USER: project2
+      RABBITMQ_DEFAULT_PASS: project2pass
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - proyecto2-net
+
+  valkey:
+    image: valkey/valkey:9.0.4-alpine
+    container_name: p2-valkey-202200141
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - proyecto2-net
+
+  rabbit-writer:
+    image: proyecto2/rabbit-writer:202200141
+    container_name: p2-rabbit-writer-202200141
+    environment:
+      RABBITMQ_URL: amqp://project2:project2pass@rabbitmq:5672/
+      RABBITMQ_QUEUE: predictions
+    ports:
+      - "8084:8084"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - proyecto2-net
+
+  go-grpc-server:
+    image: proyecto2/go-grpc-server:202200141
+    container_name: p2-go-grpc-server-202200141
+    environment:
+      RABBIT_WRITER_URL: http://rabbit-writer:8084/publish
+    ports:
+      - "50051:50051"
+    depends_on:
+      - rabbit-writer
+    networks:
+      - proyecto2-net
+
+  go-grpc-client:
+    image: proyecto2/go-grpc-client:202200141
+    container_name: p2-go-grpc-client-202200141
+    environment:
+      GRPC_SERVER_ADDR: go-grpc-server:50051
+    ports:
+      - "8083:8083"
+    depends_on:
+      - go-grpc-server
+    networks:
+      - proyecto2-net
+
+  go-rest-api:
+    image: proyecto2/go-rest-api:202200141
+    container_name: p2-go-rest-api-202200141
+    environment:
+      GRPC_CLIENT_URL: http://go-grpc-client:8083/send
+    ports:
+      - "8082:8082"
+    depends_on:
+      - go-grpc-client
+    networks:
+      - proyecto2-net
+
+  rust-api:
+    image: proyecto2/rust-api:202200141
+    container_name: p2-rust-api-202200141
+    environment:
+      GO_API_URL: http://go-rest-api:8082/prediction
+    ports:
+      - "8081:8081"
+    depends_on:
+      - go-rest-api
+    networks:
+      - proyecto2-net
+
+  rabbit-consumer:
+    image: proyecto2/rabbit-consumer:202200141
+    container_name: p2-rabbit-consumer-202200141
+    environment:
+      RABBITMQ_URL: amqp://project2:project2pass@rabbitmq:5672/
+      RABBITMQ_QUEUE: predictions
+      VALKEY_ADDR: valkey:6379
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    networks:
+      - proyecto2-net
+
+networks:
+  proyecto2-net:
+    name: proyecto2-202200141-net
+
+volumes:
+  rabbitmq_data:
+    name: proyecto2-202200141-rabbitmq-data
+
+  valkey_data:
+    name: proyecto2-202200141-valkey-data
+    
