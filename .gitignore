@@ -1,4 +1,4 @@
-# Rust
+﻿# Rust
 **/target/
 
 # Python
@@ -19,3 +19,8 @@ Thumbs.db
 # Ejecutables compilados en Windows
 *.exe
 *.pdb
+Proyecto2/.venv-locust/
+Proyecto2/oci-download-test/
+Proyecto2/locust/__pycache__/
+
+

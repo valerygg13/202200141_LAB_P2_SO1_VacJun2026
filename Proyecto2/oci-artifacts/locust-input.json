@@ -1,0 +1,14 @@
+﻿{
+  "route": "/grpc-202200141",
+  "assigned_team": "GTM",
+  "allowed_teams": [
+    "GTM",
+    "MEX",
+    "BRA",
+    "ARG",
+    "ESP"
+  ],
+  "min_goals": 0,
+  "max_goals": 5,
+  "description": "Configuracion de entrada utilizada por Locust para generar predicciones de la quiniela."
+}
