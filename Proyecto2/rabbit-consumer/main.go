@@ -318,6 +318,36 @@ func storePrediction(
 				string(awayTimePoint),
 			)
 
+			// Streams para visualización temporal en Grafana.
+			pipe.XAdd(
+				ctx,
+				valkeycompat.XAddArgs{
+					Stream: "stream:" + prediction.HomeTeam + ":home",
+					ID:     "*",
+					Values: map[string]interface{}{
+						"goals":           prediction.HomeGoals,
+						"username":        prediction.Username,
+						"event_timestamp": prediction.Timestamp,
+						"team":            prediction.HomeTeam,
+						"role":            "home",
+					},
+				},
+			)
+
+			pipe.XAdd(
+				ctx,
+				valkeycompat.XAddArgs{
+					Stream: "stream:" + prediction.AwayTeam + ":away",
+					ID:     "*",
+					Values: map[string]interface{}{
+						"goals":           prediction.AwayGoals,
+						"username":        prediction.Username,
+						"event_timestamp": prediction.Timestamp,
+						"team":            prediction.AwayTeam,
+						"role":            "away",
+					},
+				},
+			)
 			// Equipo ganador predicho.
 			if prediction.HomeGoals > prediction.AwayGoals {
 				pipe.ZIncrBy(
