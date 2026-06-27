@@ -1,0 +1,93 @@
+#cloud-config
+hostname: grafana-vm
+package_update: true
+
+packages:
+  - containerd
+  - e2fsprogs
+  - util-linux
+  - ca-certificates
+
+write_files:
+  - path: /usr/local/sbin/prepare-grafana-disk.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+
+      DEVICE="/dev/disk/by-id/virtio-GRAFANADATA"
+
+      for i in $(seq 1 60); do
+        if [ -b "$DEVICE" ]; then
+          break
+        fi
+        sleep 2
+      done
+
+      if [ ! -b "$DEVICE" ]; then
+        echo "No se encontró el disco persistente $DEVICE"
+        exit 1
+      fi
+
+      if ! blkid "$DEVICE" >/dev/null 2>&1; then
+        mkfs.ext4 -F "$DEVICE"
+      fi
+
+      UUID="$(blkid -s UUID -o value "$DEVICE")"
+      mkdir -p /mnt/grafana-data
+
+      if ! grep -q "$UUID" /etc/fstab; then
+        echo "UUID=$UUID /mnt/grafana-data ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+
+      mountpoint -q /mnt/grafana-data || mount /mnt/grafana-data
+      mkdir -p /mnt/grafana-data/containerd
+      mkdir -p /mnt/grafana-data/grafana
+      chown -R 472:0 /mnt/grafana-data/grafana
+
+  - path: /etc/systemd/system/containerd.service.d/override.conf
+    permissions: "0644"
+    content: |
+      [Unit]
+      RequiresMountsFor=/mnt/grafana-data
+
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/containerd --root /mnt/grafana-data/containerd --state /run/containerd
+
+  - path: /etc/systemd/system/grafana-container.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Grafana ejecutado dentro de containerd
+      Requires=containerd.service
+      After=containerd.service network-online.target
+      Wants=network-online.target
+      RequiresMountsFor=/mnt/grafana-data
+
+      [Service]
+      Type=simple
+      Restart=always
+      RestartSec=5
+      TimeoutStartSec=0
+
+      ExecStartPre=/usr/bin/mkdir -p /mnt/grafana-data/grafana
+      ExecStartPre=/usr/bin/chown -R 472:0 /mnt/grafana-data/grafana
+      ExecStartPre=-/usr/bin/ctr tasks kill --signal SIGKILL grafana-202200141
+      ExecStartPre=-/usr/bin/ctr tasks rm grafana-202200141
+      ExecStartPre=-/usr/bin/ctr containers rm grafana-202200141
+      ExecStartPre=/usr/bin/ctr images pull docker.io/grafana/grafana:13.0.1-ubuntu
+
+      ExecStart=/usr/bin/ctr run --rm --net-host --env GF_SERVER_HTTP_PORT=3000 --env GF_SECURITY_ADMIN_USER=admin --env GF_SECURITY_ADMIN_PASSWORD=Admin202200141 --env GF_USERS_ALLOW_SIGN_UP=false --mount type=bind,src=/mnt/grafana-data/grafana,dst=/var/lib/grafana,options=rbind:rw docker.io/grafana/grafana:13.0.1-ubuntu grafana-202200141
+
+      ExecStop=-/usr/bin/ctr tasks kill --signal SIGTERM grafana-202200141
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl stop containerd || true
+  - /usr/local/sbin/prepare-grafana-disk.sh
+  - systemctl daemon-reload
+  - systemctl enable --now containerd
+  - systemctl enable --now grafana-container.service

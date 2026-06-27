@@ -1,0 +1,115 @@
+﻿apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: valkey-vm
+  namespace: proyecto2-202200141
+  labels:
+    app: valkey-vm
+    component: database
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        app: valkey-vm
+        component: database
+    spec:
+      nodeSelector:
+        nested-virtualization: enabled
+
+      domain:
+        cpu:
+          cores: 1
+
+        resources:
+          requests:
+            cpu: 250m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+
+          interfaces:
+            - name: default
+              masquerade: {}
+
+      networks:
+        - name: default
+          pod: {}
+
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: quay.io/containerdisks/ubuntu:24.04
+
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              hostname: valkey-vm
+
+              package_update: true
+
+              packages:
+                - containerd
+
+              write_files:
+                - path: /etc/systemd/system/valkey-container.service
+                  permissions: "0644"
+                  content: |
+                    [Unit]
+                    Description=Valkey ejecutado dentro de containerd
+                    Requires=containerd.service
+                    After=containerd.service network-online.target
+                    Wants=network-online.target
+
+                    [Service]
+                    Type=simple
+                    Restart=always
+                    RestartSec=5
+                    TimeoutStartSec=0
+
+                    ExecStartPre=/usr/bin/mkdir -p /var/lib/valkey
+                    ExecStartPre=-/usr/bin/ctr tasks kill --signal SIGKILL valkey-202200141
+                    ExecStartPre=-/usr/bin/ctr tasks rm valkey-202200141
+                    ExecStartPre=-/usr/bin/ctr containers rm valkey-202200141
+                    ExecStartPre=/usr/bin/ctr images pull docker.io/valkey/valkey:9.0.4-alpine
+
+                    ExecStart=/usr/bin/ctr run --rm --net-host --mount type=bind,src=/var/lib/valkey,dst=/data,options=rbind:rw docker.io/valkey/valkey:9.0.4-alpine valkey-202200141 valkey-server --appendonly yes --dir /data --bind 0.0.0.0 --protected-mode no
+
+                    ExecStop=-/usr/bin/ctr tasks kill --signal SIGTERM valkey-202200141
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+              runcmd:
+                - systemctl enable --now containerd
+                - systemctl daemon-reload
+                - systemctl enable --now valkey-container.service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-vm-service
+  namespace: proyecto2-202200141
+spec:
+  selector:
+    app: valkey-vm
+
+  ports:
+    - name: valkey
+      protocol: TCP
+      port: 6379
+      targetPort: 6379
+
+  type: ClusterIP

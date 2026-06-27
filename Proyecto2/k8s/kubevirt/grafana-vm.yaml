@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data-pvc
+  namespace: proyecto2-202200141
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-rwo
+  volumeMode: Block
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: grafana-vm
+  namespace: proyecto2-202200141
+  labels:
+    app: grafana-vm
+    component: monitoring
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        app: grafana-vm
+        component: monitoring
+    spec:
+      nodeSelector:
+        nested-virtualization: enabled
+      domain:
+        cpu:
+          cores: 1
+        resources:
+          requests:
+            cpu: 250m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: datadisk
+              disk:
+                bus: virtio
+              serial: GRAFANADATA
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: quay.io/containerdisks/ubuntu:24.04
+        - name: datadisk
+          persistentVolumeClaim:
+            claimName: grafana-data-pvc
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef:
+              name: grafana-cloud-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-vm-service
+  namespace: proyecto2-202200141
+spec:
+  selector:
+    app: grafana-vm
+  ports:
+    - name: http-grafana
+      protocol: TCP
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP

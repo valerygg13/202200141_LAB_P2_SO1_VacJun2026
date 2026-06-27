@@ -1,0 +1,127 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-client
+  namespace: proyecto2-202200141
+  labels:
+    app: go-client
+    component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-client
+  template:
+    metadata:
+      labels:
+        app: go-client
+        component: backend
+    spec:
+      imagePullSecrets:
+        - name: zot-registry-secret
+      containers:
+        - name: go-grpc-client
+          image: dragging-coasting-dawdler.ngrok-free.dev/proyecto2/go-grpc-client:202200141
+          imagePullPolicy: Always
+          ports:
+            - name: grpc-http
+              containerPort: 8083
+              protocol: TCP
+          env:
+            - name: GRPC_SERVER_ADDR
+              value: go-grpc-server:50051
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          startupProbe:
+            tcpSocket:
+              port: grpc-http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            tcpSocket:
+              port: grpc-http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: grpc-http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 6
+        - name: go-rest-api
+          image: dragging-coasting-dawdler.ngrok-free.dev/proyecto2/go-rest-api:202200141
+          imagePullPolicy: Always
+          ports:
+            - name: rest-http
+              containerPort: 8082
+              protocol: TCP
+          env:
+            - name: GRPC_CLIENT_URL
+              value: http://go-grpc-client:8083/send
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          startupProbe:
+            tcpSocket:
+              port: rest-http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            tcpSocket:
+              port: rest-http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: rest-http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-grpc-client
+  namespace: proyecto2-202200141
+  labels:
+    app: go-client
+spec:
+  selector:
+    app: go-client
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8083
+      targetPort: grpc-http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-rest-api
+  namespace: proyecto2-202200141
+  labels:
+    app: go-client
+spec:
+  selector:
+    app: go-client
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8082
+      targetPort: rest-http
+  type: ClusterIP
+

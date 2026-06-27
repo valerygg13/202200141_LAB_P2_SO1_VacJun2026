@@ -1,0 +1,120 @@
+﻿apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: grafana-vm
+  namespace: proyecto2-202200141
+  labels:
+    app: grafana-vm
+    component: monitoring
+spec:
+  runStrategy: Always
+
+  template:
+    metadata:
+      labels:
+        app: grafana-vm
+        component: monitoring
+
+    spec:
+      nodeSelector:
+        nested-virtualization: enabled
+
+      domain:
+        cpu:
+          cores: 1
+
+        resources:
+          requests:
+            cpu: 250m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+
+          interfaces:
+            - name: default
+              masquerade: {}
+
+      networks:
+        - name: default
+          pod: {}
+
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: quay.io/containerdisks/ubuntu:24.04
+
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              hostname: grafana-vm
+
+              package_update: true
+
+              packages:
+                - containerd
+
+              write_files:
+                - path: /etc/systemd/system/grafana-container.service
+                  permissions: "0644"
+                  content: |
+                    [Unit]
+                    Description=Grafana ejecutado dentro de containerd
+                    Requires=containerd.service
+                    After=containerd.service network-online.target
+                    Wants=network-online.target
+
+                    [Service]
+                    Type=simple
+                    Restart=always
+                    RestartSec=5
+                    TimeoutStartSec=0
+
+                    ExecStartPre=/usr/bin/mkdir -p /var/lib/grafana
+                    ExecStartPre=/usr/bin/chown -R 472:0 /var/lib/grafana
+
+                    ExecStartPre=-/usr/bin/ctr tasks kill --signal SIGKILL grafana-202200141
+                    ExecStartPre=-/usr/bin/ctr tasks rm grafana-202200141
+                    ExecStartPre=-/usr/bin/ctr containers rm grafana-202200141
+
+                    ExecStartPre=/usr/bin/ctr images pull docker.io/grafana/grafana:13.0.1-ubuntu
+
+                    ExecStart=/usr/bin/ctr run --rm --net-host --mount type=bind,src=/var/lib/grafana,dst=/var/lib/grafana,options=rbind:rw docker.io/grafana/grafana:13.0.1-ubuntu grafana-202200141
+
+                    ExecStop=-/usr/bin/ctr tasks kill --signal SIGTERM grafana-202200141
+
+                    [Install]
+                    WantedBy=multi-user.target
+
+              runcmd:
+                - systemctl enable --now containerd
+                - systemctl daemon-reload
+                - systemctl enable --now grafana-container.service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-vm-service
+  namespace: proyecto2-202200141
+spec:
+  selector:
+    app: grafana-vm
+
+  ports:
+    - name: http-grafana
+      protocol: TCP
+      port: 3000
+      targetPort: 3000
+
+  type: ClusterIP

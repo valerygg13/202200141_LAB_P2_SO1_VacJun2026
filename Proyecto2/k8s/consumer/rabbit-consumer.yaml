@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbit-consumer
+  namespace: proyecto2-202200141
+  labels:
+    app: rabbit-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbit-consumer
+  template:
+    metadata:
+      labels:
+        app: rabbit-consumer
+    spec:
+      imagePullSecrets:
+        - name: zot-registry-secret
+      containers:
+        - name: rabbit-consumer
+          image: dragging-coasting-dawdler.ngrok-free.dev/proyecto2/rabbit-consumer:202200141
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-app-connection
+                  key: RABBITMQ_URL
+            - name: RABBITMQ_QUEUE
+              value: predictions
+            - name: VALKEY_ADDR
+              value: valkey-vm-service:6379
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi

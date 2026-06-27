@@ -1,0 +1,107 @@
+﻿#cloud-config
+users:
+  - default
+  - name: debug
+    groups: [adm, sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: false
+
+chpasswd:
+  expire: false
+  users:
+    - name: debug
+      password: "DebugValkey2026"
+      type: text
+      
+hostname: valkey-vm
+
+package_update: true
+
+packages:
+  - containerd
+  - e2fsprogs
+  - util-linux
+
+write_files:
+  - path: /usr/local/sbin/prepare-valkey-data.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      udevadm settle || true
+      DEVICE="/dev/disk/by-id/virtio-VALKEYDATA"
+
+      for intento in $(seq 1 60); do
+        if [ -b "${DEVICE}" ]; then
+          break
+        fi
+        sleep 2
+      done
+
+      if [ ! -b "${DEVICE}" ]; then
+        DEVICE=$(
+          lsblk -dpno NAME,TYPE |
+          awk '$2 == "disk" {print $1}' |
+          grep -v '^/dev/vda$' |
+          head -n 1
+        )
+      fi
+
+      if [ -z "${DEVICE:-}" ] || [ ! -b "${DEVICE}" ]; then
+        echo "No se encontro el disco persistente de Valkey."
+        exit 1
+      fi
+
+      if ! blkid "${DEVICE}" >/dev/null 2>&1; then
+        echo "Formateando ${DEVICE} por primera vez..."
+        mkfs.ext4 -F "${DEVICE}"
+      fi
+
+      mkdir -p /var/lib/valkey
+
+      UUID_DISK=$(blkid -s UUID -o value "${DEVICE}")
+
+      if ! grep -q "UUID=${UUID_DISK} " /etc/fstab; then
+        echo "UUID=${UUID_DISK} /var/lib/valkey ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+
+      if ! mountpoint -q /var/lib/valkey; then
+        mount /var/lib/valkey
+      fi
+
+      chmod 0777 /var/lib/valkey
+
+  - path: /etc/systemd/system/valkey-container.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Valkey ejecutado dentro de containerd
+      Requires=containerd.service
+      After=containerd.service network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      Restart=always
+      RestartSec=5
+      TimeoutStartSec=0
+
+      ExecStartPre=/usr/local/sbin/prepare-valkey-data.sh
+      ExecStartPre=-/usr/bin/ctr tasks kill --signal SIGKILL valkey-202200141
+      ExecStartPre=-/usr/bin/ctr tasks rm valkey-202200141
+      ExecStartPre=-/usr/bin/ctr containers rm valkey-202200141
+      ExecStartPre=/usr/bin/ctr images pull docker.io/valkey/valkey:9.0.4-alpine
+
+      ExecStart=/usr/bin/ctr run --rm --net-host --mount type=bind,src=/var/lib/valkey,dst=/data,options=rbind:rw docker.io/valkey/valkey:9.0.4-alpine valkey-202200141 valkey-server --appendonly yes --dir /data --bind 0.0.0.0 --protected-mode no
+
+      ExecStop=-/usr/bin/ctr tasks kill --signal SIGTERM valkey-202200141
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl enable --now containerd
+  - systemctl daemon-reload
+  - systemctl enable --now valkey-container.service

@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-app-connection
+  namespace: proyecto2-202200141
+type: Opaque
+stringData:
+  url: amqp://project2:project2pass@rabbitmq:5672/
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-server
+  namespace: proyecto2-202200141
+  labels:
+    app: go-server
+    component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: go-server
+  template:
+    metadata:
+      labels:
+        app: go-server
+        component: backend
+    spec:
+      imagePullSecrets:
+        - name: zot-registry-secret
+      containers:
+        - name: rabbit-writer
+          image: dragging-coasting-dawdler.ngrok-free.dev/proyecto2/rabbit-writer:202200141
+          imagePullPolicy: Always
+          ports:
+            - name: writer-http
+              containerPort: 8084
+              protocol: TCP
+          env:
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-app-connection
+                  key: url
+            - name: RABBITMQ_QUEUE
+              value: predictions
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          startupProbe:
+            tcpSocket:
+              port: writer-http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            tcpSocket:
+              port: writer-http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: writer-http
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 6
+
+        - name: go-grpc-server
+          image: dragging-coasting-dawdler.ngrok-free.dev/proyecto2/go-grpc-server:202200141
+          imagePullPolicy: Always
+          ports:
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          env:
+            - name: RABBIT_WRITER_URL
+              value: http://rabbit-writer:8084/publish
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          startupProbe:
+            tcpSocket:
+              port: grpc
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 24
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbit-writer
+  namespace: proyecto2-202200141
+  labels:
+    app: go-server
+spec:
+  selector:
+    app: go-server
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8084
+      targetPort: writer-http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-grpc-server
+  namespace: proyecto2-202200141
+  labels:
+    app: go-server
+spec:
+  selector:
+    app: go-server
+  ports:
+    - name: grpc
+      protocol: TCP
+      port: 50051
+      targetPort: grpc
+  type: ClusterIP

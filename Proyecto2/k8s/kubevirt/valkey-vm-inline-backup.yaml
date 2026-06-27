@@ -1,0 +1,104 @@
+﻿apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: valkey-data-pvc
+  namespace: proyecto2-202200141
+  labels:
+    app: valkey-vm
+    component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Block
+  storageClassName: standard-rwo
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: valkey-vm
+  namespace: proyecto2-202200141
+  labels:
+    app: valkey-vm
+    component: database
+spec:
+  runStrategy: Always
+
+  template:
+    metadata:
+      labels:
+        app: valkey-vm
+        component: database
+
+    spec:
+      nodeSelector:
+        nested-virtualization: enabled
+
+      domain:
+        cpu:
+          cores: 1
+
+        resources:
+          requests:
+            cpu: 250m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+
+            - name: datadisk
+              disk:
+                bus: virtio
+              serial: VALKEYDATA
+
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+
+          interfaces:
+            - name: default
+              masquerade: {}
+
+      networks:
+        - name: default
+          pod: {}
+
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: quay.io/containerdisks/ubuntu:24.04
+
+        - name: datadisk
+          persistentVolumeClaim:
+            claimName: valkey-data-pvc
+
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef:
+              name: valkey-cloud-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-vm-service
+  namespace: proyecto2-202200141
+spec:
+  selector:
+    app: valkey-vm
+
+  ports:
+    - name: valkey
+      protocol: TCP
+      port: 6379
+      targetPort: 6379
+
+  type: ClusterIP
+

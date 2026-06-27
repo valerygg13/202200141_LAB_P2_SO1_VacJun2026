@@ -1,0 +1,9 @@
+spec:
+  infra:
+    nodePlacement:
+      nodeSelector:
+        nested-virtualization: enabled
+  workloads:
+    nodePlacement:
+      nodeSelector:
+        nested-virtualization: enabled
