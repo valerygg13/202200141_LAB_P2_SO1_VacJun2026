@@ -144,7 +144,7 @@ con el carné `202200141` y se publicaron en Zot.
 La IP observada durante la validación fue `8.232.64.139`. Para evitar depender de una IP escrita manualmente, se recomienda obtenerla dinámicamente.
 
 
-### 3.5RabbitMQ
+### 3.5 RabbitMQ
 
 RabbitMQ funciona como broker principal de mensajería y desacopla la recepción
 de predicciones de su procesamiento.
@@ -748,106 +748,150 @@ Locust 2.44.4
 
 
 ### 11.2 Prueba con una réplica
-Para el primer escenario, el Deployment `rust-api` se ejecutó con una sola
-réplica. En la evidencia se observa:
 
-- Deployment disponible `1/1`.
-- Una réplica activa.
-- Un único Pod de `rust-api`.
-- Resultados de Locust para 50 usuarios durante 60 segundos.
+Se ejecutó el Deployment `go-server` con una réplica. Cada Pod de este
+Deployment contiene los contenedores `go-grpc-server` y `rabbit-writer`.
 
-Configuración:
+Para mantener una comparación controlada, `rust-api` permaneció con una
+réplica y el HPA se congeló temporalmente. `rabbit-consumer` y la VM de
+Valkey permanecieron con una instancia.
+
+**Configuración:**
 
 ```text
-Usuarios: 50
-Spawn rate: 5 usuarios/s
-Duración: 60 s
-Réplicas de Rust: 1
+Usuarios: 100
+Spawn rate: 10 usuarios/s
+Duración: 90 s
+Réplicas de go-server: 1
+Réplicas de rabbit-consumer: 1
+Valkey: 1 VM persistente
 ```
 
-Comando:
+**Validación del estado:**
 
-```powershell
-& ".\locust\.venv\Scripts\python.exe" `
-  -m locust `
-  -f .\locust\locustfile.py `
-  --headless `
-  --host "http://8.232.64.139" `
-  --users 50 `
-  --spawn-rate 5 `
-  --run-time 60s `
-  --csv ".\docs\performance\rust-1-replica" `
-  --csv-full-history `
-  --html ".\docs\performance\rust-1-replica.html" `
-  --only-summary
-```
+- Deployment disponible: `1/1`
+- Un único Pod de `rust-api` activo
+- HPA configurado para no escalar durante esta prueba
+
 ![PRUEBA_1REPLICA](image-11.png)
 
+**Resultados de Locust:**
+
+![RESULTADO_REPLICA1](image-24.png)
+
+**Verificación end-to-end (Rust → Go → Valkey):**
+
+Se confirmó que cada predicción recibida en Rust fue procesada correctamente por Go, publicada en RabbitMQ y finalmente almacenada en Valkey:
+
+![RESULTADO2_REPLICA1_INLCUYEVALKEY](image-25.png)
+
+RESULTADOS:
+| Métrica                            |   Valor |
+| ---------------------------------- | ------: |
+| Solicitudes                        |    2238 |
+| Fallos                             |       0 |
+| Solicitudes/s                      |   25.15 |
+| Tiempo promedio                    | 1763 ms |
+| Mediana                            | 1700 ms |
+| Percentil 95                       | 3000 ms |
+| Máximo                             | 3968 ms |
+| Predicciones almacenadas en Valkey |    2242 |
+
+
+---
 
 ### 11.3 Prueba con dos réplicas
-Para el segundo escenario, el Deployment `rust-api` se ejecutó con dos
-réplicas. En la evidencia se observa:
+Se escaló el Deployment `go-server` a dos réplicas. Esto produjo dos
+instancias de `go-grpc-server` y dos instancias de `rabbit-writer`.
 
-- Deployment disponible `2/2`.
-- Dos réplicas activas.
-- Dos Pods distintos de `rust-api`.
-- Resultados de Locust utilizando la misma carga y duración de la prueba anterior.
+Los demás componentes se mantuvieron sin cambios para comparar ambos
+escenarios bajo la misma carga.
 
-Configuración:
+**Configuración:**
 
 ```text
-Usuarios: 50
-Spawn rate: 5 usuarios/s
-Duración: 60 s
-Réplicas de Rust: 2
+Usuarios: 100
+Spawn rate: 10 usuarios/s
+Duración: 90 s
+Réplicas de go-server: 2
+Réplicas de rabbit-consumer: 1
+Valkey: 1 VM persistente
 ```
 
-Comando:
+**Validación del estado:**
 
-```powershell
-& ".\locust\.venv\Scripts\python.exe" `
-  -m locust `
-  -f .\locust\locustfile.py `
-  --headless `
-  --host "http://8.232.64.139" `
-  --users 50 `
-  --spawn-rate 5 `
-  --run-time 60s `
-  --csv ".\docs\performance\rust-2-replicas" `
-  --csv-full-history `
-  --html ".\docs\performance\rust-2-replicas.html" `
-  --only-summary
-```
+- Deployment disponible: `2/2`
+- Dos Pods distintos de `rust-api` activos y distribuidos
 
 ![PRUEBA_2REPLICAS](image-10.png)
 
-### 11.4 Comparación
+**Resultados de Locust:**
+
+![RESULTADOS_REPLICA2](image-26.png)
+
+**Verificación de almacenamiento en Valkey:**
+
+![RESULTADOS_VALKEY_REPLICA2](image-28.png)
+
+
+RESULTADOS:
+| Métrica                            |   Valor |
+| ---------------------------------- | ------: |
+| Solicitudes                        |    2242 |
+| Fallos                             |       0 |
+| Solicitudes/s                      |   25.21 |
+| Tiempo promedio                    | 1790 ms |
+| Mediana                            | 1400 ms |
+| Percentil 95                       | 4200 ms |
+| Máximo                             | 5209 ms |
+| Predicciones almacenadas en Valkey |    2247 |
+
+---
+
+### 11.4 Análisis comparativo
 
 | Métrica | 1 réplica | 2 réplicas | Resultado |
 |---|---:|---:|---|
-| Solicitudes | 1242 | 1258 | +1.29 % |
+| Solicitudes | 2238 | 2242 | +0.18 % |
 | Fallos | 0 | 0 | Sin fallos |
-| Solicitudes/s | 21.10 | 21.28 | +0.85 % |
-| Promedio | 237 ms | 224 ms | Mejora de 5.49 % |
-| Mediana | 200 ms | 190 ms | Mejora de 5.00 % |
-| Percentil 95 | 440 ms | 420 ms | Mejora de 4.55 % |
-| Máximo | 658 ms | 723 ms | Valor aislado mayor |
+| Solicitudes/s | 25.15 | 25.21 | +0.24 % |
+| Tiempo promedio | 1763 ms | 1790 ms | +1.53 % |
+| Mediana | 1700 ms | 1400 ms | Mejora de 17.65 % |
+| Percentil 95 | 3000 ms | 4200 ms | Incremento de 40 % |
+| Máximo | 3968 ms | 5209 ms | Incremento de 31.28 % |
+| Predicciones almacenadas en Valkey | 2242 | 2247 | +0.22 % |
 
-La segunda réplica redujo el tiempo promedio y el percentil 95. El incremento de solicitudes por segundo fue moderado porque cada usuario espera entre uno y tres segundos entre solicitudes.
-Esta comparación adicional se realizó sobre el Deployment de Rust. La prueba de HPA también utilizó Rust por ser el componente configurado para escalamiento automático.
+**Análisis:**
 
-### 11.5 Prueba de HPA
+Con dos réplicas de `go-server` se obtuvo un incremento ligero en la tasa
+de solicitudes y una reducción de la mediana de 1700 ms a 1400 ms.
 
-Configuración:
+Sin embargo, el tiempo promedio, el percentil 95 y el tiempo máximo
+aumentaron. Por ello, no se observó una mejora uniforme. Esto indica que el
+cuello de botella no se encontraba únicamente en el Go Writer, sino que
+también depende del único Rabbit Consumer, RabbitMQ, Valkey y la comunicación
+entre los servicios.
+
+Ambos escenarios finalizaron sin solicitudes fallidas y Valkey almacenó
+correctamente las predicciones procesadas.
+
+
+---
+
+### 11.5 Prueba de escalamiento automático (HPA)
+
+Se activó el HPA para observar su comportamiento ante carga variable.
+
+**Configuración:**
 
 ```text
 Usuarios: 100
 Spawn rate: 10 usuarios/s
 Duración: 4 minutos
-HPA: mínimo 1, máximo 3, objetivo 35 %
+HPA: mínimo 1, máximo 3, objetivo de CPU 35%
 ```
 
-Comando:
+**Comando ejecutado:**
 
 ```powershell
 & ".\locust\.venv\Scripts\python.exe" `
@@ -864,22 +908,32 @@ Comando:
   --only-summary
 ```
 
-Resultados:
+**Resultados:**
 
 | Métrica | Valor |
 |---|---:|
-| Solicitudes | 7887 |
-| Fallos | 0 |
+| Solicitudes totales | 7887 |
 | Solicitudes/s | 32.99 |
-| Promedio | 960 ms |
+| Tiempo promedio | 960 ms |
 | Percentil 95 | 1200 ms |
 | Máximo | 4297 ms |
+| Fallos | 0 |
 
-El HPA escaló automáticamente hasta tres Pods y posteriormente regresó a una réplica.
+**Comportamiento del HPA:**
 
-### 11.6 Interfaz gráfica de Locust
+El HPA reaccionó a los cambios de carga:
+- Fase inicial (ramp-up): 1 → 2 → 3 réplicas cuando CPU superó 35%
+- Fase final (ramp-down): 3 → 2 → 1 réplica cuando la carga disminuyó
 
-Inicio:
+![LOCUST100USERS](image-12.png)
+
+---
+
+### 11.6 Interfaz interactiva de Locust
+
+Para demostraciones en tiempo real, se utilizó la interfaz gráfica de Locust:
+
+**Inicio:**
 
 ```powershell
 $GWIP = kubectl get gateway proyecto2-gateway `
@@ -892,19 +946,13 @@ $GWIP = kubectl get gateway proyecto2-gateway `
   --host "http://$GWIP"
 ```
 
-Abrir:
+**Acceso:**
 
 ```powershell
 Start-Process "http://localhost:8089"
 ```
 
-Configuración utilizada para la demostración:
-
-```text
-Users: 100
-Spawn rate: 10
-Host: http://8.232.64.139
-```
+La interfaz permite configurar usuarios, spawn rate y visualizar métricas en tiempo real mientras el HPA escala automáticamente.
 
 ---
 
