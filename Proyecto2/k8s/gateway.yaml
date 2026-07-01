@@ -1,0 +1,63 @@
+﻿apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: proyecto2-gateway
+  namespace: proyecto2-202200141
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: rust-grpc-route
+  namespace: proyecto2-202200141
+spec:
+  parentRefs:
+    - name: proyecto2-gateway
+      sectionName: http
+
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /grpc-202200141
+
+      backendRefs:
+        - name: rust-api
+          port: 8081
+          weight: 1
+
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: rust-api-healthcheck
+  namespace: proyecto2-202200141
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+
+    logConfig:
+      enabled: true
+
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_SERVING_PORT
+        requestPath: /health
+
+  targetRef:
+    group: ""
+    kind: Service
+    name: rust-api

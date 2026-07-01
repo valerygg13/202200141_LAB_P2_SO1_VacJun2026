@@ -1,0 +1,136 @@
+﻿apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"kubevirt.io/v1","kind":"VirtualMachine","metadata":{"annotations":{},"labels":{"app":"valkey-vm","component":"database"},"name":"valkey-vm","namespace":"proyecto2-202200141"},"spec":{"runStrategy":"Always","template":{"metadata":{"labels":{"app":"valkey-vm","component":"database"}},"spec":{"domain":{"cpu":{"cores":1},"devices":{"disks":[{"disk":{"bus":"virtio"},"name":"rootdisk"},{"disk":{"bus":"virtio"},"name":"cloudinitdisk"}],"interfaces":[{"masquerade":{},"name":"default"}]},"resources":{"limits":{"cpu":"1","memory":"2Gi"},"requests":{"cpu":"250m","memory":"1Gi"}}},"networks":[{"name":"default","pod":{}}],"nodeSelector":{"nested-virtualization":"enabled"},"volumes":[{"containerDisk":{"image":"quay.io/containerdisks/ubuntu:24.04"},"name":"rootdisk"},{"cloudInitNoCloud":{"userData":"#cloud-config\nhostname: valkey-vm\n\npackage_update: true\n\npackages:\n  - containerd\n\nwrite_files:\n  - path: /etc/systemd/system/valkey-container.service\n    permissions: \"0644\"\n    content: |\n      [Unit]\n      Description=Valkey ejecutado dentro de containerd\n      Requires=containerd.service\n      After=containerd.service network-online.target\n      Wants=network-online.target\n\n      [Service]\n      Type=simple\n      Restart=always\n      RestartSec=5\n      TimeoutStartSec=0\n\n      ExecStartPre=/usr/bin/mkdir -p /var/lib/valkey\n      ExecStartPre=-/usr/bin/ctr tasks kill --signal SIGKILL valkey-202200141\n      ExecStartPre=-/usr/bin/ctr tasks rm valkey-202200141\n      ExecStartPre=-/usr/bin/ctr containers rm valkey-202200141\n      ExecStartPre=/usr/bin/ctr images pull docker.io/valkey/valkey:9.0.4-alpine\n\n      ExecStart=/usr/bin/ctr run --rm --net-host --mount type=bind,src=/var/lib/valkey,dst=/data,options=rbind:rw docker.io/valkey/valkey:9.0.4-alpine valkey-202200141 valkey-server --appendonly yes --dir /data --bind 0.0.0.0 --protected-mode no\n\n      ExecStop=-/usr/bin/ctr tasks kill --signal SIGTERM valkey-202200141\n\n      [Install]\n      WantedBy=multi-user.target\n\nruncmd:\n  - systemctl enable --now containerd\n  - systemctl daemon-reload\n  - systemctl enable --now valkey-container.service\n"},"name":"cloudinitdisk"}]}}}}
+    kubevirt.io/latest-observed-api-version: v1
+    kubevirt.io/storage-observed-api-version: v1
+  creationTimestamp: "2026-06-26T19:45:23Z"
+  finalizers:
+  - kubevirt.io/virtualMachineControllerFinalize
+  generation: 3
+  labels:
+    app: valkey-vm
+    component: database
+  name: valkey-vm
+  namespace: proyecto2-202200141
+  resourceVersion: "1782591855568111022"
+  uid: 99bf9217-94d9-4f52-a886-e291df3d731a
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      annotations:
+        kubevirt.io/pci-topology-version: v3
+      labels:
+        app: valkey-vm
+        component: database
+    spec:
+      architecture: amd64
+      domain:
+        cpu:
+          cores: 1
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: rootdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+          interfaces:
+          - masquerade: {}
+            name: default
+        firmware:
+          serial: b89b6e84-ced6-4982-89e7-8b685d37281b
+          uuid: 9f6274c2-8526-42b6-b722-23adb3d02b07
+        machine:
+          type: q35
+        resources:
+          limits:
+            cpu: "1"
+            memory: 2Gi
+          requests:
+            cpu: 250m
+            memory: 1Gi
+      networks:
+      - name: default
+        pod: {}
+      nodeSelector:
+        nested-virtualization: enabled
+      volumes:
+      - containerDisk:
+          image: quay.io/containerdisks/ubuntu:24.04
+        name: rootdisk
+      - cloudInitNoCloud:
+          userData: |
+            #cloud-config
+            hostname: valkey-vm
+
+            package_update: true
+
+            packages:
+              - containerd
+
+            write_files:
+              - path: /etc/systemd/system/valkey-container.service
+                permissions: "0644"
+                content: |
+                  [Unit]
+                  Description=Valkey ejecutado dentro de containerd
+                  Requires=containerd.service
+                  After=containerd.service network-online.target
+                  Wants=network-online.target
+
+                  [Service]
+                  Type=simple
+                  Restart=always
+                  RestartSec=5
+                  TimeoutStartSec=0
+
+                  ExecStartPre=/usr/bin/mkdir -p /var/lib/valkey
+                  ExecStartPre=-/usr/bin/ctr tasks kill --signal SIGKILL valkey-202200141
+                  ExecStartPre=-/usr/bin/ctr tasks rm valkey-202200141
+                  ExecStartPre=-/usr/bin/ctr containers rm valkey-202200141
+                  ExecStartPre=/usr/bin/ctr images pull docker.io/valkey/valkey:9.0.4-alpine
+
+                  ExecStart=/usr/bin/ctr run --rm --net-host --mount type=bind,src=/var/lib/valkey,dst=/data,options=rbind:rw docker.io/valkey/valkey:9.0.4-alpine valkey-202200141 valkey-server --appendonly yes --dir /data --bind 0.0.0.0 --protected-mode no
+
+                  ExecStop=-/usr/bin/ctr tasks kill --signal SIGTERM valkey-202200141
+
+                  [Install]
+                  WantedBy=multi-user.target
+
+            runcmd:
+              - systemctl enable --now containerd
+              - systemctl daemon-reload
+              - systemctl enable --now valkey-container.service
+        name: cloudinitdisk
+status:
+  conditions:
+  - lastProbeTime: null
+    lastTransitionTime: "2026-06-27T20:24:13Z"
+    status: "True"
+    type: Ready
+  - lastProbeTime: null
+    lastTransitionTime: null
+    status: "True"
+    type: LiveMigratable
+  - lastProbeTime: null
+    lastTransitionTime: null
+    status: "True"
+    type: StorageLiveMigratable
+  created: true
+  desiredGeneration: 3
+  observedGeneration: 3
+  printableStatus: Running
+  ready: true
+  runStrategy: Always
+  volumeSnapshotStatuses:
+  - enabled: false
+    name: rootdisk
+    reason: Snapshot is not supported for this volumeSource type [rootdisk]
+  - enabled: false
+    name: cloudinitdisk
+    reason: Snapshot is not supported for this volumeSource type [cloudinitdisk]

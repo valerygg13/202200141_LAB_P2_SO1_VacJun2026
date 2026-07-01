@@ -1,5 +1,23 @@
 #cloud-config
 hostname: grafana-vm
+users:
+  - default
+  - name: ubuntu
+    groups:
+      - adm
+      - sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+
+ssh_pwauth: true
+
+chpasswd:
+  expire: false
+  users:
+    - name: ubuntu
+      password: "valesuki"
+      type: text
 package_update: true
 
 packages:

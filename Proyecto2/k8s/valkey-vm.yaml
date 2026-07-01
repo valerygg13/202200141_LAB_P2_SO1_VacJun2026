@@ -1,0 +1,65 @@
+﻿apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: valkey-vm
+  namespace: proyecto2-202200141
+  labels:
+    app: valkey-vm
+    component: database
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        app: valkey-vm
+        component: database
+    spec:
+      domain:
+        cpu:
+          cores: 1
+        resources:
+          requests:
+            cpu: 250m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+
+            - name: datadisk
+              disk:
+                bus: virtio
+              serial: VALKEYDATA
+
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+
+          interfaces:
+            - name: default
+              masquerade: {}
+
+      networks:
+        - name: default
+          pod: {}
+
+      nodeSelector:
+        nested-virtualization: enabled
+
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: quay.io/containerdisks/ubuntu:24.04
+
+        - name: datadisk
+          persistentVolumeClaim:
+            claimName: valkey-data-pvc
+
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef:
+              name: valkey-cloud-init
